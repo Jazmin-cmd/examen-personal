@@ -37,40 +37,47 @@ if ($uri === '/personas' && $metodo === 'GET') {
         echo json_encode(['error' => 'Persona no encontrada']);
     }
 
-// POST /personas (crear — sin imágenes todavía, eso lo agregamos después)
 } elseif ($uri === '/personas' && $metodo === 'POST') {
-    $input = json_decode(file_get_contents('php://input'), true);
-
-    // Validaciones básicas
-    if (empty($input['nombres']) || empty($input['apellidos']) || empty($input['nro_documento']) || empty($input['fecha_nacimiento'])) {
+    if (empty($_POST['nombres']) || empty($_POST['apellidos']) || empty($_POST['nro_documento']) || empty($_POST['fecha_nacimiento'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Faltan campos obligatorios']);
         exit;
     }
 
-    if (strtotime($input['fecha_nacimiento']) > time()) {
+    if (strtotime($_POST['fecha_nacimiento']) > time()) {
         http_response_code(400);
         echo json_encode(['error' => 'La fecha de nacimiento no puede ser futura']);
         exit;
     }
 
+    if (empty($_FILES['foto_frente']) || empty($_FILES['foto_dorso'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Debe subir ambas imágenes de la cédula']);
+        exit;
+    }
+
     try {
+        $nombreFrente = \App\ImagenHelper::procesar($_FILES['foto_frente']);
+        $nombreDorso = \App\ImagenHelper::procesar($_FILES['foto_dorso']);
+
         $id = Persona::crear([
-            'nombres' => $input['nombres'],
-            'apellidos' => $input['apellidos'],
-            'nro_documento' => $input['nro_documento'],
-            'fecha_nacimiento' => $input['fecha_nacimiento'],
-            'foto_frente' => 'pendiente.jpg', // temporal, hasta que agreguemos upload
-            'foto_dorso' => 'pendiente.jpg'
+            'nombres' => $_POST['nombres'],
+            'apellidos' => $_POST['apellidos'],
+            'nro_documento' => $_POST['nro_documento'],
+            'fecha_nacimiento' => $_POST['fecha_nacimiento'],
+            'foto_frente' => $nombreFrente,
+            'foto_dorso' => $nombreDorso
         ]);
         http_response_code(201);
         echo json_encode(['id' => $id, 'mensaje' => 'Persona creada']);
     } catch (\PDOException $e) {
         http_response_code(409);
         echo json_encode(['error' => 'El número de documento ya existe']);
+    } catch (\RuntimeException $e) {
+        http_response_code(400);
+        echo json_encode(['error' => $e->getMessage()]);
     }
-
-// PUT /personas/5
+    // PUT /personas/5
 } elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'PUT') {
     $input = json_decode(file_get_contents('php://input'), true);
     $actualizado = Persona::actualizar((int) $segmentos[1], $input);
