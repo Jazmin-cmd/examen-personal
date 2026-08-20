@@ -9,6 +9,7 @@ use App\CaptchaHelper;
 use App\IpHelper;
 use App\GeoHelper;
 use App\TelegramHelper;
+use App\ImagenHelper;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->load();
@@ -83,6 +84,31 @@ if ($uri === '/personas' && $metodo === 'GET') {
         echo json_encode(['error' => $e->getMessage()]);
     }
     // PUT /personas/5
+} elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'POST' && ($_POST['_method'] ?? '') === 'PUT') {
+    $id = (int) $segmentos[1];
+
+    $datos = [
+        'nombres' => $_POST['nombres'],
+        'apellidos' => $_POST['apellidos'],
+        'fecha_nacimiento' => $_POST['fecha_nacimiento'],
+    ];
+
+    try {
+        if (!empty($_FILES['foto_frente']['name'])) {
+            $datos['foto_frente'] = ImagenHelper::procesar($_FILES['foto_frente']);
+        }
+        if (!empty($_FILES['foto_dorso']['name'])) {
+            $datos['foto_dorso'] = ImagenHelper::procesar($_FILES['foto_dorso']);
+        }
+
+        $actualizado = Persona::actualizar($id, $datos);
+        echo json_encode(['actualizado' => $actualizado]);
+    } catch (\RuntimeException $e) {
+        http_response_code(400);
+        echo json_encode(['error' => $e->getMessage()]);
+    } 
+
+
 } elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'PUT') {
     $input = json_decode(file_get_contents('php://input'), true);
     $actualizado = Persona::actualizar((int) $segmentos[1], $input);

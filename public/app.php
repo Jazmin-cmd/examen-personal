@@ -13,13 +13,14 @@
     <h1>Registro de Personas</h1>
     <p class="subtitulo">Esta página permite ver los registros de personas y modificarlos</p>
     <div class="caja-interna">
-        <button class="primario" onclick="abrirModal('modalBuscar')">Buscar</button>
+        <button class="verde" onclick="toggleListado()">Listar personas</button>
         <button class="secundario" onclick="abrirModal('modalCrear')">+ Nueva persona</button>
+        <button class="primario" onclick="abrirModal('modalBuscar')">Buscar</button>
     </div>
 </div>
 
-<div class="card" style="text-align:left;">
-    <h3 style="margin-top:0;">Personas registradas</h3>
+<div class="card" id="cardListado" style="text-align:left; display:none;">
+    <h3 style="margin-top:0;">Personas Registradas</h3>
     <table id="tablaPersonas">
         <thead>
             <tr><th>Nombres</th><th>Apellidos</th><th>Documento</th><th>Edad</th><th>Acciones</th></tr>
@@ -79,6 +80,21 @@
             <label>Nombres <input type="text" id="editarNombres" required></label>
             <label>Apellidos <input type="text" id="editarApellidos" required></label>
             <label>Fecha de nacimiento <input type="date" id="editarFecha" required></label>
+
+            <label>Foto cédula (frente) — dejar vacío para no cambiar</label>
+            <div class="file-drop">
+                <span class="file-label" id="labelEditarFrente">Click para reemplazar imagen</span>
+                <input type="file" id="editarFrente" accept="image/*" onchange="previsualizar(this, 'previewEditarFrente', 'labelEditarFrente')">
+                <img class="file-preview" id="previewEditarFrente">
+            </div>
+
+            <label>Foto cédula (dorso) — dejar vacío para no cambiar</label>
+            <div class="file-drop">
+                <span class="file-label" id="labelEditarDorso">Click para reemplazar imagen</span>
+                <input type="file" id="editarDorso" accept="image/*" onchange="previsualizar(this, 'previewEditarDorso', 'labelEditarDorso')">
+                <img class="file-preview" id="previewEditarDorso">
+            </div>
+
             <button type="submit" class="primario" style="margin-top:18px; width:100%;">Guardar cambios</button>
         </form>
     </div>
@@ -162,7 +178,7 @@ async function cargarPersonas(pagina = 1) {
             <td>${p.nro_documento}</td>
             <td>${p.edad}</td>
             <td>
-                <button class="secundario" onclick="verDocumento('${p.foto_frente}', '${p.foto_dorso}')" style="padding:6px 12px; font-size:13px;">Ver</button>
+                <button class="secundario" onclick="verDocumento('${p.foto_frente}', '${p.foto_dorso}')" style="padding:6px 12px; font-size:13px;">Cédula</button>
                 <button class="edit" onclick='abrirEditar(${JSON.stringify(p)})'>Editar</button>
                 <button class="danger" onclick="eliminarPersona(${p.id})">Eliminar</button>
             </td>
@@ -208,6 +224,12 @@ function abrirEditar(persona) {
     document.getElementById('editarNombres').value = persona.nombres;
     document.getElementById('editarApellidos').value = persona.apellidos;
     document.getElementById('editarFecha').value = persona.fecha_nacimiento;
+    document.getElementById('editarFrente').value = '';
+    document.getElementById('editarDorso').value = '';
+    document.getElementById('previewEditarFrente').style.display = 'none';
+    document.getElementById('previewEditarDorso').style.display = 'none';
+    document.getElementById('labelEditarFrente').textContent = 'Click para reemplazar imagen';
+    document.getElementById('labelEditarDorso').textContent = 'Click para reemplazar imagen';
     abrirModal('modalEditar');
 }
 
@@ -215,22 +237,26 @@ document.getElementById('formEditar').addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = document.getElementById('editarId').value;
 
-    const res = await fetch(`${API}/personas/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            nombres: document.getElementById('editarNombres').value,
-            apellidos: document.getElementById('editarApellidos').value,
-            fecha_nacimiento: document.getElementById('editarFecha').value
-        })
-    });
+    const formData = new FormData();
+    formData.append('_method', 'PUT');
+    formData.append('nombres', document.getElementById('editarNombres').value);
+    formData.append('apellidos', document.getElementById('editarApellidos').value);
+    formData.append('fecha_nacimiento', document.getElementById('editarFecha').value);
+
+    const frenteInput = document.getElementById('editarFrente');
+    const dorsoInput = document.getElementById('editarDorso');
+    if (frenteInput.files[0]) formData.append('foto_frente', frenteInput.files[0]);
+    if (dorsoInput.files[0]) formData.append('foto_dorso', dorsoInput.files[0]);
+
+    const res = await fetch(`${API}/personas/${id}`, { method: 'POST', body: formData });
+    const resultado = await res.json();
 
     if (res.ok) {
         cargarPersonas(paginaActual);
         cerrarModal('modalEditar');
         Swal.fire({ icon: 'success', title: 'Persona actualizada', text: 'Los cambios se guardaron correctamente.', timer: 1500, showConfirmButton: false });
     } else {
-        Swal.fire({ icon: 'error', title: 'No se pudo actualizar', text: 'Verificá los datos e intentá de nuevo.' });
+        Swal.fire({ icon: 'error', title: 'No se pudo actualizar', text: resultado.error || 'Verificá los datos e intentá de nuevo.' });
     }
 });
 
@@ -288,7 +314,14 @@ function verDocumento(frente, dorso) {
     abrirModal('modalVer');
 }
 
-cargarPersonas();
+let listadoVisible = false;
+function toggleListado() {
+    listadoVisible = !listadoVisible;
+    document.getElementById('cardListado').style.display = listadoVisible ? 'block' : 'none';
+    if (listadoVisible) cargarPersonas(1);
+}
+
+//cargarPersonas();
 </script>
 
 </body>

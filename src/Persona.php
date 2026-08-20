@@ -61,11 +61,18 @@ class Persona
     public static function actualizar(int $id, array $datos): bool
     {
         $pdo = Database::getConnection();
-        $stmt = $pdo->prepare(
-            "UPDATE personas SET nombres = :nombres, apellidos = :apellidos,
-             fecha_nacimiento = :fecha_nacimiento WHERE id = :id"
-        );
+
+        $campos = "nombres = :nombres, apellidos = :apellidos, fecha_nacimiento = :fecha_nacimiento";
         $datos['id'] = $id;
+
+        if (!empty($datos['foto_frente'])) {
+            $campos .= ", foto_frente = :foto_frente";
+        }
+        if (!empty($datos['foto_dorso'])) {
+            $campos .= ", foto_dorso = :foto_dorso";
+        }
+
+        $stmt = $pdo->prepare("UPDATE personas SET $campos WHERE id = :id");
         return $stmt->execute($datos);
     }
 

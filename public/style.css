@@ -73,13 +73,6 @@ button.danger:hover { background: var(--danger-dark); }
 button.edit { background: var(--edit); color: white; padding: 6px 12px; font-size: 13px; margin-right: 6px; }
 button.edit:hover { background: var(--edit-dark); }
 
-table { width: 100%; border-collapse: collapse; text-align: left; }
-th, td { padding: 14px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
-th { background: #f8fafc; font-weight: 600; color: var(--text-light); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
-tr:hover td { background: #f8fafc; }
-td:last-child { white-space: nowrap; }
-
-
 .pagination {
     display: flex;
     justify-content: space-between;
@@ -181,14 +174,6 @@ input:focus { outline: none; border-color: var(--primary); }
 }
 
 
-td:last-child {
-    white-space: nowrap;
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-
 
 #resultadosBusqueda p { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
 .cf-turnstile { margin-top: 16px; }
@@ -197,3 +182,56 @@ td:last-child {
     width: 100%;
     border-radius: 8px;
 }
+
+
+table {
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    vertical-align: middle;
+}
+
+th {
+    background: #f8fafc;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-align: left;
+}
+
+tr:hover td { background: #f8fafc; }
+
+th:nth-child(1), td:nth-child(1) { width: 20%; }
+th:nth-child(2), td:nth-child(2) { width: 20%; }
+th:nth-child(3), td:nth-child(3) { width: 18%; }
+th:nth-child(4), td:nth-child(4) { width: 10%; }
+th:nth-child(5), td:nth-child(5) { width: 32%; text-align: center; }
+
+td:nth-child(1), td:nth-child(2), td:nth-child(3), td:nth-child(4) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+td:last-child {
+    white-space: nowrap;
+}
+
+td:last-child button {
+    margin-right: 6px;
+}
+
+td:last-child button:last-child {
+    margin-right: 0;
+}
+
+button.verde { background: #16a34a; color: white; }
+button.verde:hover:not(:disabled) { background: #15803d; }
