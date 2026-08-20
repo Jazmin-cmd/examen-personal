@@ -4,6 +4,11 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 use Dotenv\Dotenv;
 use App\Persona;
+use App\Auditoria;
+use App\CaptchaHelper;
+use App\IpHelper;
+use App\GeoHelper;
+use App\TelegramHelper;
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->load();
@@ -87,6 +92,62 @@ if ($uri === '/personas' && $metodo === 'GET') {
 } elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'DELETE') {
     $eliminado = Persona::eliminar((int) $segmentos[1]);
     echo json_encode(['eliminado' => $eliminado]);
+
+} elseif ($uri === '/buscar' && $metodo === 'GET') {
+    $termino = trim($_GET['q'] ?? '');
+    $token = $_GET['captcha_token'] ?? '';
+
+    if (empty($token)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Falta la verificación captcha']);
+        exit;
+    }
+
+    $ip = IpHelper::obtenerIpReal();
+
+    if (!CaptchaHelper::validar($token, $ip)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Verificación captcha inválida']);
+        exit;
+    }
+
+    if (mb_strlen($termino) < 2) {
+        http_response_code(400);
+        echo json_encode(['error' => 'El término de búsqueda debe tener al menos 2 caracteres']);
+        exit;
+    }
+
+    $resultados = Persona::buscar($termino);
+    $totalResultados = Persona::contarBusqueda($termino);
+    $geo = GeoHelper::obtenerInfo($ip);
+
+    $mensajeTelegram = sprintf(
+        "-- Nueva búsqueda\nTérmino: %s\nResultados: %d\nOrigen: %s, %s",
+        $termino,
+        $totalResultados,
+        $geo['ciudad'] ?? 'desconocido',
+        $geo['pais'] ?? 'desconocido'
+    );
+    $telegramOk = TelegramHelper::notificar($mensajeTelegram);
+
+    Auditoria::registrar([
+        'termino' => $termino,
+        'cantidad_resultados' => $totalResultados,
+        'ip_origen' => $ip,
+        'geo_pais' => $geo['pais'] ?? null,
+        'geo_ciudad' => $geo['ciudad'] ?? null,
+        'geo_proveedor' => $geo['proveedor'] ?? null,
+        'geo_lat' => $geo['lat'] ?? null,
+        'geo_lon' => $geo['lon'] ?? null,
+        'telegram_enviado' => $telegramOk ? 1 : 0,
+    ]);
+
+    echo json_encode(['data' => $resultados, 'total' => $totalResultados]);
+
+} elseif ($uri === '/auditoria' && $metodo === 'GET') {
+    $pagina = isset($_GET['pagina']) ? (int) $_GET['pagina'] : 1;
+    echo json_encode(['data' => Auditoria::listar($pagina)]);
+
 
 } else {
     http_response_code(404);

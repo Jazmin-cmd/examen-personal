@@ -12,6 +12,7 @@
     input { width: 100%; padding: 5px; box-sizing: border-box; }
     button { margin-top: 15px; padding: 8px 15px; }
 </style>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
 
@@ -29,6 +30,15 @@
     <p id="mensajeCrear"></p>
 </form>
 
+<h3>Buscar personas</h3>
+<form id="formBuscar">
+    <input type="text" id="terminoBusqueda" placeholder="Buscar por nombre, apellido o documento..." required>
+    <div class="cf-turnstile" data-sitekey="0x4AAAAAAEWBvb_HlVrAwpgW" data-callback="onCaptchaResuelto"></div>
+    <button type="submit" id="btnBuscar" disabled>Buscar</button>
+</form>
+<div id="resultadosBusqueda"></div>
+
+
 <table id="tablaPersonas">
     <thead>
         <tr><th>Nombres</th><th>Apellidos</th><th>Documento</th><th>Edad</th><th>Acciones</th></tr>
@@ -39,7 +49,7 @@
 <div id="paginacion"></div>
 
 <script>
-const API = 'http://localhost:8000';
+const API = 'http://localhost:8080';
 
 async function cargarPersonas(pagina = 1) {
     const res = await fetch(`${API}/personas?pagina=${pagina}`);
@@ -89,6 +99,33 @@ document.getElementById('formCrear').addEventListener('submit', async (e) => {
     } else {
         mensaje.innerText = 'Error: ' + resultado.error;
     }
+});
+
+
+let captchaToken = null;
+
+function onCaptchaResuelto(token) {
+    captchaToken = token;
+    document.getElementById('btnBuscar').disabled = false;
+}
+
+document.getElementById('formBuscar').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const termino = document.getElementById('terminoBusqueda').value;
+
+    const res = await fetch(`${API}/buscar?q=${encodeURIComponent(termino)}&captcha_token=${captchaToken}`);
+    const data = await res.json();
+
+    const div = document.getElementById('resultadosBusqueda');
+
+    if (!res.ok) {
+        div.innerHTML = `<p style="color:red">${data.error}</p>`;
+        return;
+    }
+
+    div.innerHTML = `<p>${data.total} resultado(s)</p>` + data.data.map(p =>
+        `<p>${p.nombres} ${p.apellidos} - ${p.nro_documento} (${p.edad} años)</p>`
+    ).join('');
 });
 
 cargarPersonas();

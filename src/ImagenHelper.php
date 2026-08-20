@@ -30,6 +30,13 @@ class ImagenHelper
             throw new \RuntimeException('El archivo no es una imagen procesable');
         }
 
+        // Verificación anti-polyglot: buscar contenido de código ejecutable dentro del archivo.
+        // No es 100% infalible, pero reduce el riesgo de un JPG/PNG con PHP embebido.
+        $contenido = file_get_contents($archivo['tmp_name']);
+        if (preg_match('/<\?php|<\?=|<script[\s>]/i', $contenido)) {
+            throw new \RuntimeException('El archivo contiene contenido no permitido');
+        }
+
         $extension = match ($mimeReal) {
             'image/jpeg' => 'jpg',
             'image/png' => 'png',

@@ -81,4 +81,52 @@ class Persona
         $hoy = new \DateTime();
         return $hoy->diff($nacimiento)->y;
     }
+
+    public static function buscar(string $termino, int $pagina = 1, int $porPagina = 20): array
+    {
+        $pdo = Database::getConnection();
+        $offset = ($pagina - 1) * $porPagina;
+        $like = '%' . $termino . '%';
+
+        $stmt = $pdo->prepare(
+            "SELECT id, nombres, apellidos, nro_documento, fecha_nacimiento
+             FROM personas
+            WHERE CONCAT(nombres, ' ', apellidos) LIKE :like
+                OR nombres LIKE :like
+                OR apellidos LIKE :like
+                OR nro_documento LIKE :like
+             ORDER BY id DESC LIMIT :limit OFFSET :offset"
+        );
+        $stmt->bindValue(':like', $like, PDO::PARAM_STR);
+        $stmt->bindValue(':limit', $porPagina, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $personas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($personas as &$persona) {
+            $persona['edad'] = self::calcularEdad($persona['fecha_nacimiento']);
+        }
+
+        return $personas;
+    }
+
+    public static function contarBusqueda(string $termino): int
+    {
+        $pdo = Database::getConnection();
+        $like = '%' . $termino . '%';
+
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM personas
+             WHERE CONCAT(nombres, ' ', apellidos) LIKE :like
+                OR nombres LIKE :like
+                OR apellidos LIKE :like
+                OR nro_documento LIKE :like"
+        );
+        $stmt->bindValue(':like', $like, PDO::PARAM_STR);
+        $stmt->execute();
+
+        return (int) $stmt->fetchColumn();
+    }
+
+
 }
