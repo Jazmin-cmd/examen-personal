@@ -11,7 +11,8 @@ class Persona
         $pdo = Database::getConnection();
         $offset = ($pagina - 1) * $porPagina;
 
-        $stmt = $pdo->prepare("SELECT id, nombres, apellidos, nro_documento, fecha_nacimiento FROM personas ORDER BY id DESC LIMIT :limit OFFSET :offset");
+        //$stmt = $pdo->prepare("SELECT id, nombres, apellidos, nro_documento, fecha_nacimiento FROM personas ORDER BY id DESC LIMIT :limit OFFSET :offset");
+         $stmt = $pdo->prepare("SELECT id, nombres, apellidos, nro_documento, fecha_nacimiento, foto_frente, foto_dorso FROM personas ORDER BY id DESC LIMIT :limit OFFSET :offset");
         $stmt->bindValue(':limit', $porPagina, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
@@ -127,6 +128,8 @@ class Persona
 
         return (int) $stmt->fetchColumn();
     }
+
+    
 
 
 }

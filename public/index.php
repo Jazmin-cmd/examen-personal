@@ -144,6 +144,24 @@ if ($uri === '/personas' && $metodo === 'GET') {
 
     echo json_encode(['data' => $resultados, 'total' => $totalResultados]);
 
+} elseif (preg_match('#^/cedulas/([a-zA-Z0-9_-]+\.(jpg|png|webp))$#', $uri, $matches) && $metodo === 'GET') {
+    $archivo = __DIR__ . '/../storage/cedulas/' . $matches[1];
+
+    if (!file_exists($archivo)) {
+        http_response_code(404);
+        exit;
+    }
+
+    $extension = pathinfo($archivo, PATHINFO_EXTENSION);
+    $mime = match ($extension) {
+        'jpg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+    };
+
+    header('Content-Type: ' . $mime);
+    readfile($archivo);
+
 } elseif ($uri === '/auditoria' && $metodo === 'GET') {
     $pagina = isset($_GET['pagina']) ? (int) $_GET['pagina'] : 1;
     echo json_encode(['data' => Auditoria::listar($pagina)]);
