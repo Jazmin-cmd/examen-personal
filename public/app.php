@@ -1,3 +1,7 @@
+<?php
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -5,22 +9,39 @@
 <title>CRUD Personas</title>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <link rel="stylesheet" href="style.css?v=1">
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
 
 <div class="card">
-    <h1>Registro de Personas</h1>
-    <p class="subtitulo">Esta página permite ver los registros de personas y modificarlos</p>
-    <div class="caja-interna">
-        <button class="verde" onclick="toggleListado()">Listar personas</button>
+    <div class="card-header">
+        <div>
+            <h1>Registro de Personas</h1>
+            <p class="subtitulo">Esta página permite ver los registros de personas y modificarlos</p>
+        </div>
         <button class="secundario" onclick="abrirModal('modalCrear')">+ Nueva persona</button>
-        <button class="primario" onclick="abrirModal('modalBuscar')">Buscar</button>
+    </div>
+    <div class="caja-interna">
+        <div class="fila-filtro">
+            <div class="select-envoltorio">
+                <select id="filtroBusqueda" onchange="cambiarFiltro()">
+                    <option value="todos">Listar todos</option>
+                    <option value="nombre">Por nombre / apellido</option>
+                    <option value="documento">Por documento</option>
+                </select>
+            </div>
+            <div class="grupo-busqueda">
+                <input type="text" id="terminoNombre" placeholder="Nombre..." style="display:none;">
+                <input type="text" id="terminoApellido" placeholder="Apellido..." style="display:none;">
+                <input type="text" id="terminoDocumento" placeholder="Nro. de documento..." style="display:none;" inputmode="numeric" pattern="[0-9]*">
+                <button class="primario" onclick="prepararBusqueda()">Buscar</button>
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="card" id="cardListado" style="text-align:left; display:none;">
-    <h3 style="margin-top:0;">Personas Registradas</h3>
+<div class="card" id="cardResultados" style="text-align:left; display:none;">
+    <h3 style="margin-top:0;">Personas registradas</h3>
     <table id="tablaPersonas">
         <thead>
             <tr><th>Nombres</th><th>Apellidos</th><th>Documento</th><th>Edad</th><th>Acciones</th></tr>
@@ -36,6 +57,25 @@
     </div>
 </div>
 
+
+<div class="modal-overlay" id="modalCaptcha">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>Verificación</h3>
+            <!-- <button class="cerrar-modal" onclick="cerrarModal('modalCaptcha')">✕</button>-->
+        </div>
+        <p style="font-size:14px; color:#64748b;">Confirmá que sos humano para continuar.</p>
+        <div id="turnstileContainer"></div>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalCargando">
+    <div class="modal-box" style="text-align:center;">
+        <div class="spinner"></div>
+        <p style="margin-top:16px; color:#64748b; font-size:14px;">Cargando datos...</p>
+    </div>
+</div>
+
 <!-- Modal: Nueva persona -->
 <div class="modal-overlay" id="modalCrear">
     <div class="modal-box ancho">
@@ -44,11 +84,20 @@
             <button class="cerrar-modal" onclick="cerrarModal('modalCrear')">✕</button>
         </div>
         <form id="formCrear">
-            <label>Nombres <input type="text" name="nombres" required></label>
-            <label>Apellidos <input type="text" name="apellidos" required></label>
-            <label>Nro. Documento <input type="text" name="nro_documento" required></label>
-            <label>Fecha de nacimiento <input type="date" name="fecha_nacimiento" required></label>
-
+            <label>Nombres <input type="text" name="nombres" required pattern="[A-Za-zÀ-ÿ\s]+"
+                oninvalid="this.setCustomValidity('Los nombres sólo pueden contener letras')"
+                oninput="this.setCustomValidity('')"></label>
+            <label>Apellidos <input type="text" name="apellidos" required pattern="[A-Za-zÀ-ÿ\s]+"
+                oninvalid="this.setCustomValidity('Los apellidos sólo pueden contener letras')"
+                oninput="this.setCustomValidity('')"></label>
+            <label>Nro. Documento <input type="text" name="nro_documento" required inputmode="numeric" pattern="[0-9]*"
+                oninvalid="this.setCustomValidity('El número de documento debe ser numérico')"
+                oninput="this.setCustomValidity('')"></label>
+            <label>Fecha de nacimiento
+                <input type="date" name="fecha_nacimiento" max="<?= date('Y-m-d') ?>" required
+                    oninvalid="this.setCustomValidity('La fecha de nacimiento no puede ser futura')"
+                    oninput="this.setCustomValidity('')">
+            </label>
             <label>Foto cédula (frente)</label>
             <div class="file-drop">
                 <span class="file-label" id="labelFrente">Click para seleccionar imagen</span>
@@ -77,9 +126,17 @@
         </div>
         <form id="formEditar">
             <input type="hidden" id="editarId">
-            <label>Nombres <input type="text" id="editarNombres" required></label>
-            <label>Apellidos <input type="text" id="editarApellidos" required></label>
-            <label>Fecha de nacimiento <input type="date" id="editarFecha" required></label>
+            <label>Nombres <input type="text" id="editarNombres" required pattern="[A-Za-zÀ-ÿ\s]+"
+                oninvalid="this.setCustomValidity('Los nombres sólo pueden contener letras')"
+                oninput="this.setCustomValidity('')"></label>
+            <label>Apellidos <input type="text" id="editarApellidos" required pattern="[A-Za-zÀ-ÿ\s]+"
+                oninvalid="this.setCustomValidity('Los apellidos sólo pueden contener letras')"
+                oninput="this.setCustomValidity('')"></label>
+            <label>Fecha de nacimiento
+                <input type="date" id="editarFecha" max="<?= date('Y-m-d') ?>" required
+                    oninvalid="this.setCustomValidity('La fecha de nacimiento no puede ser futura')"
+                    oninput="this.setCustomValidity('')">
+            </label>
 
             <label>Foto cédula (frente) — dejar vacío para no cambiar</label>
             <div class="file-drop">
@@ -113,35 +170,20 @@
     </div>
 </div>
 
-<!-- Modal: Buscar -->
-<div class="modal-overlay" id="modalBuscar">
-    <div class="modal-box">
-        <div class="modal-header">
-            <h3>Buscar personas</h3>
-            <button class="cerrar-modal" onclick="cerrarModal('modalBuscar')">✕</button>
-        </div>
-        <form id="formBuscar">
-            <label>Nombre, apellido o documento
-                <input type="text" id="terminoBusqueda" required>
-            </label>
-            <div class="cf-turnstile" data-sitekey="0x4AAAAAAEWBvb_HlVrAwpgW" data-callback="onCaptchaResuelto"></div>
-            <button type="submit" id="btnBuscar" class="primario" disabled style="margin-top:18px; width:100%;">Buscar</button>
-        </form>
-        <div id="resultadosBusqueda" style="margin-top:16px;"></div>
-    </div>
-</div>
-
 <script>
 const API = window.location.origin;
 let paginaActual = 1;
 let totalPersonas = 0;
 const PORPAGINA = 20;
+let captchaToken = null;
+let turnstileWidgetId = null;
 
 function abrirModal(id) { document.getElementById(id).classList.add('abierto'); }
 function cerrarModal(id) { document.getElementById(id).classList.remove('abierto'); }
 
 document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', (e) => {
+        if (overlay.id === 'modalCaptcha' || overlay.id === 'modalCargando') return; // no se cierran haciendo clic afuera ;)
         if (e.target === overlay) overlay.classList.remove('abierto');
     });
 });
@@ -160,19 +202,171 @@ function previsualizar(input, previewId, labelId) {
     }
 }
 
-async function cargarPersonas(pagina = 1) {
-    const res = await fetch(`${API}/personas?pagina=${pagina}`);
+function cambiarFiltro() {
+    const filtro = document.getElementById('filtroBusqueda').value;
+    const esNombre = filtro === 'nombre';
+    document.getElementById('terminoNombre').style.display = esNombre ? 'inline-block' : 'none';
+    document.getElementById('terminoApellido').style.display = esNombre ? 'inline-block' : 'none';
+    document.getElementById('terminoDocumento').style.display = filtro === 'documento' ? 'inline-block' : 'none';
+
+    document.querySelectorAll('#terminoNombre, #terminoApellido, #terminoDocumento').forEach(input => {
+        marcarCampoInvalido(input, false);
+    });
+}
+
+function obtenerErrorFiltro() {
+    const filtro = document.getElementById('filtroBusqueda').value;
+
+    if (filtro === 'nombre') {
+        const nombre = document.getElementById('terminoNombre').value.trim();
+        const apellido = document.getElementById('terminoApellido').value.trim();
+        if (!nombre && !apellido) return 'Completá al menos nombre o apellido';
+        const soloLetras = /^[\p{L}\s]*$/u;
+        if (!soloLetras.test(nombre) || !soloLetras.test(apellido)) return 'Nombre y apellido sólo pueden contener letras';
+    } else if (filtro === 'documento') {
+        const documento = document.getElementById('terminoDocumento').value.trim();
+        if (documento.length < 2) return 'Escribí al menos 2 caracteres';
+        if (!/^\d+$/.test(documento)) return 'El documento sólo puede contener números';
+    }
+
+    return null;
+}
+
+function marcarCampoInvalido(input, invalido) {
+    input.classList.toggle('campo-invalido', invalido);
+}
+
+function validarCamposFiltroActual(mostrarError) {
+    const filtro = document.getElementById('filtroBusqueda').value;
+    const error = obtenerErrorFiltro();
+
+    if (filtro === 'nombre') {
+        marcarCampoInvalido(document.getElementById('terminoNombre'), !!error);
+        marcarCampoInvalido(document.getElementById('terminoApellido'), !!error);
+    } else if (filtro === 'documento') {
+        marcarCampoInvalido(document.getElementById('terminoDocumento'), !!error);
+    }
+
+    if (error && mostrarError) {
+        Swal.fire({ icon: 'warning', title: error });
+    }
+
+    return error;
+}
+
+document.getElementById('terminoNombre').addEventListener('blur', () => validarCamposFiltroActual(true));
+document.getElementById('terminoApellido').addEventListener('blur', () => validarCamposFiltroActual(true));
+document.getElementById('terminoDocumento').addEventListener('blur', () => validarCamposFiltroActual(true));
+
+document.querySelectorAll('#terminoNombre, #terminoApellido, #terminoDocumento').forEach(input => {
+    input.addEventListener('input', () => marcarCampoInvalido(input, false));
+});
+
+document.querySelectorAll('#terminoDocumento, input[name="nro_documento"]').forEach(input => {
+    input.addEventListener('input', () => {
+        input.value = input.value.replace(/\D/g, '');
+    });
+});
+
+document.querySelectorAll('#terminoNombre, #terminoApellido, input[name="nombres"], input[name="apellidos"], #editarNombres, #editarApellidos').forEach(input => {
+    input.addEventListener('input', () => {
+        input.value = input.value.replace(/[^\p{L}\s]/gu, '');
+    });
+});
+
+function prepararBusqueda() {
+    if (validarCamposFiltroActual(true)) return;
+
+    captchaToken = null;
+    abrirModal('modalCaptcha');
+
+    if (turnstileWidgetId !== null) {
+        turnstile.remove(turnstileWidgetId);
+    }
+
+    turnstileWidgetId = turnstile.render('#turnstileContainer', {
+        sitekey: '0x4AAAAAAEWBvb_HlVrAwpgW',
+        callback: onCaptchaResuelto
+    });
+}
+
+function onCaptchaResuelto(token) {
+    captchaToken = token;
+    ejecutarBusqueda(1);
+}
+
+async function ejecutarBusqueda(pagina) {
+    const filtro = document.getElementById('filtroBusqueda').value;
+
+    if (validarCamposFiltroActual(true)) {
+        cerrarModal('modalCaptcha');
+        return;
+    }
+
+    let params = new URLSearchParams({ filtro, pagina, captcha_token: captchaToken });
+
+    if (filtro === 'nombre') {
+        params.append('nombre', document.getElementById('terminoNombre').value.trim());
+        params.append('apellido', document.getElementById('terminoApellido').value.trim());
+    } else if (filtro === 'documento') {
+        params.append('documento', document.getElementById('terminoDocumento').value.trim());
+    }
+
+    cerrarModal('modalCaptcha');
+    abrirModal('modalCargando');
+
+    const res = await fetch(`${API}/buscar?${params.toString()}`);
     const data = await res.json();
+
+    cerrarModal('modalCargando');
+
+    if (!res.ok) {
+        Swal.fire({ icon: 'error', title: 'Error en la búsqueda', text: data.error });
+        return;
+    }
 
     paginaActual = data.pagina;
     totalPersonas = data.total;
+    renderTabla(data.data);
+}
+
+async function refrescarTabla(pagina) {
+    const filtro = document.getElementById('filtroBusqueda').value;
+    let params = new URLSearchParams({ filtro, pagina });
+
+    if (filtro === 'nombre') {
+        params.append('nombre', document.getElementById('terminoNombre').value.trim());
+        params.append('apellido', document.getElementById('terminoApellido').value.trim());
+    } else if (filtro === 'documento') {
+        params.append('documento', document.getElementById('terminoDocumento').value.trim());
+    }
+
+    const res = await fetch(`${API}/personas-refrescar?${params.toString()}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+        Swal.fire({ icon: 'warning', title: 'La verificación expiró', text: 'Volvé a buscar para actualizar el listado.' });
+        return;
+    }
+
+    paginaActual = data.pagina;
+    totalPersonas = data.total;
+    renderTabla(data.data);
+}
+
+function renderTabla(personas) {
+    document.getElementById('cardResultados').style.display = 'block';
 
     const tbody = document.querySelector('#tablaPersonas tbody');
     tbody.innerHTML = '';
 
-    data.data.forEach(p => {
+    if (personas.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#64748b;">No existen registros para esos datos</td></tr>';
+    }
+
+    personas.forEach(p => {
         const fila = document.createElement('tr');
-                fila.innerHTML = `
+        fila.innerHTML = `
             <td>${p.nombres}</td>
             <td>${p.apellidos}</td>
             <td>${p.nro_documento}</td>
@@ -194,7 +388,13 @@ async function cargarPersonas(pagina = 1) {
 }
 
 function cambiarPagina(delta) {
-    cargarPersonas(paginaActual + delta);
+    ejecutarBusqueda(paginaActual + delta);
+}
+
+function verDocumento(frente, dorso) {
+    document.getElementById('verFrente').src = `${API}/cedulas/${frente}`;
+    document.getElementById('verDorso').src = `${API}/cedulas/${dorso}`;
+    abrirModal('modalVer');
 }
 
 async function eliminarPersona(id) {
@@ -210,7 +410,7 @@ async function eliminarPersona(id) {
     if (!confirmacion.isConfirmed) return;
 
     const res = await fetch(`${API}/personas/${id}`, { method: 'DELETE' });
-    cargarPersonas(paginaActual);
+    refrescarTabla(paginaActual);
 
     if (res.ok) {
         Swal.fire({ icon: 'success', title: 'Persona eliminada', timer: 1200, showConfirmButton: false });
@@ -252,7 +452,7 @@ document.getElementById('formEditar').addEventListener('submit', async (e) => {
     const resultado = await res.json();
 
     if (res.ok) {
-        cargarPersonas(paginaActual);
+        refrescarTabla(paginaActual);
         cerrarModal('modalEditar');
         Swal.fire({ icon: 'success', title: 'Persona actualizada', text: 'Los cambios se guardaron correctamente.', timer: 1500, showConfirmButton: false });
     } else {
@@ -272,56 +472,12 @@ document.getElementById('formCrear').addEventListener('submit', async (e) => {
         document.querySelectorAll('.file-preview').forEach(img => img.style.display = 'none');
         document.getElementById('labelFrente').textContent = 'Click para seleccionar imagen';
         document.getElementById('labelDorso').textContent = 'Click para seleccionar imagen';
-        cargarPersonas(1);
         cerrarModal('modalCrear');
         Swal.fire({ icon: 'success', title: 'Persona creada correctamente', text: `Se registró a ${formData.get('nombres')} ${formData.get('apellidos')}.`, timer: 1800, showConfirmButton: false });
     } else {
         Swal.fire({ icon: 'error', title: 'No se pudo crear la persona', text: resultado.error });
     }
-
 });
-
-let captchaToken = null;
-function onCaptchaResuelto(token) {
-    captchaToken = token;
-    document.getElementById('btnBuscar').disabled = false;
-}
-
-document.getElementById('formBuscar').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const termino = document.getElementById('terminoBusqueda').value;
-    const div = document.getElementById('resultadosBusqueda');
-
-    div.innerHTML = '<p style="text-align:center; color:#64748b;">Buscando...</p>';
-
-    const res = await fetch(`${API}/buscar?q=${encodeURIComponent(termino)}&captcha_token=${captchaToken}`);
-    const data = await res.json();
-
-    if (!res.ok) {
-        div.innerHTML = '';
-        Swal.fire({ icon: 'error', title: 'Error en la búsqueda', text: data.error });
-        return;
-    }
-
-    div.innerHTML = `<p><strong>${data.total} resultado(s)</strong></p>` + data.data.map(p =>
-        `<p>${p.nombres} ${p.apellidos} — ${p.nro_documento} (${p.edad} años)</p>`
-    ).join('');
-});
-
-function verDocumento(frente, dorso) {
-    document.getElementById('verFrente').src = `${API}/cedulas/${frente}`;
-    document.getElementById('verDorso').src = `${API}/cedulas/${dorso}`;
-    abrirModal('modalVer');
-}
-
-let listadoVisible = false;
-function toggleListado() {
-    listadoVisible = !listadoVisible;
-    document.getElementById('cardListado').style.display = listadoVisible ? 'block' : 'none';
-    if (listadoVisible) cargarPersonas(1);
-}
-
-//cargarPersonas();
 </script>
 
 </body>

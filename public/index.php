@@ -11,29 +11,29 @@ use App\GeoHelper;
 use App\TelegramHelper;
 use App\ImagenHelper;
 
+
 $dotenv = Dotenv::createImmutable(__DIR__ . '/..');
 $dotenv->load();
 
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => !empty($_SERVER['HTTPS']) || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https'),
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+session_start();
+
 header('Content-Type: application/json');
+
+const CAPTCHA_VIGENCIA_SEGUNDOS = 900; // 15 minutos: alcanza para recargar la tabla tras un alta/edición/baja sin volver a pedir captcha
 
 $metodo = $_SERVER['REQUEST_METHOD'];
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $segmentos = explode('/', trim($uri, '/'));
 
-// GET /personas?pagina=1
-if ($uri === '/personas' && $metodo === 'GET') {
-    $pagina = isset($_GET['pagina']) ? (int) $_GET['pagina'] : 1;
-    $personas = Persona::listar($pagina);
-    $total = Persona::contarTotal();
-
-    echo json_encode([
-        'data' => $personas,
-        'total' => $total,
-        'pagina' => $pagina
-    ]);
-
 // GET /personas/5
-} elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
+if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
     $persona = Persona::buscarPorId((int) $segmentos[1]);
 
     if ($persona) {
@@ -53,6 +53,18 @@ if ($uri === '/personas' && $metodo === 'GET') {
     if (strtotime($_POST['fecha_nacimiento']) > time()) {
         http_response_code(400);
         echo json_encode(['error' => 'La fecha de nacimiento no puede ser futura']);
+        exit;
+    }
+
+    if (!preg_match('/^[\p{L}\s]+$/u', $_POST['nombres']) || !preg_match('/^[\p{L}\s]+$/u', $_POST['apellidos'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Nombres y apellidos sólo pueden contener letras']);
+        exit;
+    }
+
+    if (!ctype_digit($_POST['nro_documento'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'El número de documento sólo puede contener números']);
         exit;
     }
 
@@ -87,6 +99,12 @@ if ($uri === '/personas' && $metodo === 'GET') {
 } elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'POST' && ($_POST['_method'] ?? '') === 'PUT') {
     $id = (int) $segmentos[1];
 
+    if (!preg_match('/^[\p{L}\s]+$/u', $_POST['nombres']) || !preg_match('/^[\p{L}\s]+$/u', $_POST['apellidos'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Nombres y apellidos sólo pueden contener letras']);
+        exit;
+    }
+
     $datos = [
         'nombres' => $_POST['nombres'],
         'apellidos' => $_POST['apellidos'],
@@ -120,8 +138,13 @@ if ($uri === '/personas' && $metodo === 'GET') {
     echo json_encode(['eliminado' => $eliminado]);
 
 } elseif ($uri === '/buscar' && $metodo === 'GET') {
-    $termino = trim($_GET['q'] ?? '');
+    //$termino = trim($_GET['q'] ?? '');
+    $filtro = $_GET['filtro'] ?? 'todos';
+    $nombre = trim($_GET['nombre'] ?? '');
+    $apellido = trim($_GET['apellido'] ?? '');
+    $documento = trim($_GET['documento'] ?? '');
     $token = $_GET['captcha_token'] ?? '';
+    $pagina = isset($_GET['pagina']) ? (int) $_GET['pagina'] : 1;
 
     if (empty($token)) {
         http_response_code(400);
@@ -137,19 +160,30 @@ if ($uri === '/personas' && $metodo === 'GET') {
         exit;
     }
 
-    if (mb_strlen($termino) < 2) {
+    $_SESSION['captcha_verificado_hasta'] = time() + CAPTCHA_VIGENCIA_SEGUNDOS;
+
+    if ($filtro !== 'todos' && mb_strlen($nombre) < 2 && mb_strlen($apellido) < 2 && mb_strlen($documento) < 2) {
         http_response_code(400);
         echo json_encode(['error' => 'El término de búsqueda debe tener al menos 2 caracteres']);
         exit;
     }
 
-    $resultados = Persona::buscar($termino);
-    $totalResultados = Persona::contarBusqueda($termino);
-    $geo = GeoHelper::obtenerInfo($ip);
+    if ($filtro === 'documento' && !ctype_digit($documento)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'El documento sólo puede contener números']);
+        exit;
+    }
 
+    $resultados = Persona::buscarConFiltro($documento, $filtro, $nombre, $apellido, $pagina);
+    $totalResultados = Persona::contarConFiltro($documento, $nombre, $apellido, $filtro);
+
+    $geo = GeoHelper::obtenerInfo($ip);
     $mensajeTelegram = sprintf(
-        "-- Nueva búsqueda\nTérmino: %s\nResultados: %d\nOrigen: %s, %s",
-        $termino,
+        "-- Nueva búsqueda\nDominio: %s\nMétodo: %s\nEndpoint: %s\nFiltro usado: %s\nResultados: %d\nOrigen: %s, %s",
+        $_SERVER['HTTP_ORIGIN'] ?? $_SERVER['HTTP_REFERER'] ?? 'desconocido',
+        $metodo,
+        $uri,
+        $filtro,
         $totalResultados,
         $geo['ciudad'] ?? 'desconocido',
         $geo['pais'] ?? 'desconocido'
@@ -157,7 +191,7 @@ if ($uri === '/personas' && $metodo === 'GET') {
     $telegramOk = TelegramHelper::notificar($mensajeTelegram);
 
     Auditoria::registrar([
-        'termino' => $termino,
+        'termino' => $documento ?: '(listado completo)',
         'cantidad_resultados' => $totalResultados,
         'ip_origen' => $ip,
         'geo_pais' => $geo['pais'] ?? null,
@@ -168,8 +202,8 @@ if ($uri === '/personas' && $metodo === 'GET') {
         'telegram_enviado' => $telegramOk ? 1 : 0,
     ]);
 
-    echo json_encode(['data' => $resultados, 'total' => $totalResultados]);
-
+    echo json_encode(['data' => $resultados, 'total' => $totalResultados, 'pagina' => $pagina]); 
+    
 } elseif (preg_match('#^/cedulas/([a-zA-Z0-9_-]+\.(jpg|png|webp))$#', $uri, $matches) && $metodo === 'GET') {
     $archivo = __DIR__ . '/../storage/cedulas/' . $matches[1];
 
@@ -191,6 +225,25 @@ if ($uri === '/personas' && $metodo === 'GET') {
 } elseif ($uri === '/auditoria' && $metodo === 'GET') {
     $pagina = isset($_GET['pagina']) ? (int) $_GET['pagina'] : 1;
     echo json_encode(['data' => Auditoria::listar($pagina)]);
+
+
+} elseif ($uri === '/personas-refrescar' && $metodo === 'GET') {
+    if (($_SESSION['captcha_verificado_hasta'] ?? 0) < time()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Verificación captcha requerida o expirada']);
+        exit;
+    }
+
+    $filtro = $_GET['filtro'] ?? 'todos';
+    $nombre = trim($_GET['nombre'] ?? '');
+    $apellido = trim($_GET['apellido'] ?? '');
+    $documento = trim($_GET['documento'] ?? '');
+    $pagina = isset($_GET['pagina']) ? (int) $_GET['pagina'] : 1;
+
+    $resultados = Persona::buscarConFiltro($documento, $filtro, $nombre, $apellido, $pagina);
+    $totalResultados = Persona::contarConFiltro($documento, $nombre, $apellido, $filtro);
+
+    echo json_encode(['data' => $resultados, 'total' => $totalResultados, 'pagina' => $pagina]);
 
 
 } else {

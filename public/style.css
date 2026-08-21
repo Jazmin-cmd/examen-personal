@@ -38,7 +38,18 @@ body {
 }
 
 .card h1 { font-size: 24px; color: var(--primary); margin: 0 0 8px; }
-.card .subtitulo { color: var(--text-light); font-size: 14px; margin: 0 0 24px; }
+.card .subtitulo { color: var(--text-light); font-size: 14px; margin: 0; }
+
+.card-header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    text-align: left;
+    margin-bottom: 24px;
+}
+.card-header button.secundario { flex-shrink: 0; }
 
 .caja-interna {
     background: var(--inner-bg);
@@ -47,6 +58,80 @@ body {
     display: flex;
     justify-content: center;
     gap: 14px;
+}
+
+.fila-filtro {
+    display: flex;
+    width: 100%;
+    gap: 14px;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.fila-filtro select, .fila-filtro input[type="text"] {
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 0;
+    font-size: 14px;
+}
+
+.fila-filtro input[type="text"] {
+    width: 180px;
+}
+
+.fila-filtro input[type="text"].campo-invalido {
+    border-color: var(--danger);
+    background: #fef2f2;
+}
+
+.grupo-busqueda {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.select-envoltorio {
+    position: relative;
+    display: inline-flex;
+}
+.select-envoltorio::after {
+    content: '';
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--text-light);
+    border-bottom: 2px solid var(--text-light);
+    transform: translateY(-70%) rotate(45deg);
+    pointer-events: none;
+}
+.select-envoltorio select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: white;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    padding: 12px 40px 12px 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.select-envoltorio select:hover {
+    background: #f8fafc;
+    border-color: var(--secondary);
+}
+.select-envoltorio select:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+.select-envoltorio select option {
+    background: white;
+    color: var(--text);
+    font-weight: 500;
 }
 
 button {
@@ -88,40 +173,78 @@ button.edit:hover { background: var(--edit-dark); }
     display: none;
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(15, 23, 42, 0.5);
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(2px);
     align-items: center;
     justify-content: center;
+    padding: 40px 16px;
     z-index: 100;
+    animation: fondo-aparecer 0.15s ease;
 }
 .modal-overlay.abierto { display: flex; }
+@keyframes fondo-aparecer { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modal-aparecer {
+    from { opacity: 0; transform: translateY(8px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
 .modal-box {
     background: white;
     border-radius: 16px;
     padding: 28px;
     width: 90%;
     max-width: 440px;
-    max-height: 85vh;
+    max-height: 100%;
     overflow-y: auto;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
     text-align: left;
+    animation: modal-aparecer 0.18s ease;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
 }
+.modal-box::-webkit-scrollbar { width: 8px; }
+.modal-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; }
 .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
+    padding-bottom: 14px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--border);
 }
 .modal-header h3 { margin: 0; color: var(--primary); }
 .cerrar-modal {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
     background: none;
     border: none;
-    font-size: 20px;
+    border-radius: 50%;
+    font-size: 16px;
+    line-height: 1;
     color: var(--text-light);
     cursor: pointer;
     padding: 0;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.cerrar-modal:hover {
+    background: var(--inner-bg);
+    color: var(--text);
 }
 
 .modal-box.ancho { max-width: 600px; }
+
+.spinner {
+    width: 36px;
+    height: 36px;
+    margin: 10px auto 0;
+    border: 4px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: girar 0.8s linear infinite;
+}
+@keyframes girar { to { transform: rotate(360deg); } }
 
 .modal-box label {
     display: block;
@@ -132,7 +255,7 @@ button.edit:hover { background: var(--edit-dark); }
     color: var(--text-light);
 }
 
-input[type="text"], input[type="date"] {
+.modal-box input[type="text"], .modal-box input[type="date"] {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid var(--border);
