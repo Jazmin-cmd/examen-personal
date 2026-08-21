@@ -6,33 +6,6 @@ use PDO;
 
 class Persona
 {
-    public static function listar(int $pagina = 1, int $porPagina = 20): array
-    {
-        $pdo = Database::getConnection();
-        $offset = ($pagina - 1) * $porPagina;
-
-        //$stmt = $pdo->prepare("SELECT id, nombres, apellidos, nro_documento, fecha_nacimiento FROM personas ORDER BY id DESC LIMIT :limit OFFSET :offset");
-         $stmt = $pdo->prepare("SELECT id, nombres, apellidos, nro_documento, fecha_nacimiento, foto_frente, foto_dorso FROM personas ORDER BY id DESC LIMIT :limit OFFSET :offset");
-        $stmt->bindValue(':limit', $porPagina, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-
-        $personas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        foreach ($personas as &$persona) {
-            $persona['edad'] = self::calcularEdad($persona['fecha_nacimiento']);
-        }
-
-        return $personas;
-    }
-
-    public static function contarTotal(): int
-    {
-        $pdo = Database::getConnection();
-        $stmt = $pdo->query("SELECT COUNT(*) FROM personas");
-        return (int) $stmt->fetchColumn();
-    }
-
     public static function crear(array $datos): int
     {
         $pdo = Database::getConnection();
@@ -90,22 +63,18 @@ class Persona
         return $hoy->diff($nacimiento)->y;
     }
 
-    public static function buscar(string $termino, int $pagina = 1, int $porPagina = 20): array
+    public static function buscarConFiltro(string $documento, string $filtro, string $nombre, string $apellido, int $pagina = 1, int $porPagina = 20): array
     {
         $pdo = Database::getConnection();
         $offset = ($pagina - 1) * $porPagina;
-        $like = '%' . $termino . '%';
 
-        $stmt = $pdo->prepare(
-            "SELECT id, nombres, apellidos, nro_documento, fecha_nacimiento
-             FROM personas
-            WHERE CONCAT(nombres, ' ', apellidos) LIKE :like
-                OR nombres LIKE :like
-                OR apellidos LIKE :like
-                OR nro_documento LIKE :like
-             ORDER BY id DESC LIMIT :limit OFFSET :offset"
-        );
-        $stmt->bindValue(':like', $like, PDO::PARAM_STR);
+        [$where, $params] = self::armarWhere($filtro, $nombre, $apellido, $documento);
+
+        $sql = "SELECT id, nombres, apellidos, nro_documento, fecha_nacimiento, foto_frente, foto_dorso FROM personas $where ORDER BY id DESC LIMIT :limit OFFSET :offset";
+        $stmt = $pdo->prepare($sql);
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
         $stmt->bindValue(':limit', $porPagina, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
@@ -114,29 +83,49 @@ class Persona
         foreach ($personas as &$persona) {
             $persona['edad'] = self::calcularEdad($persona['fecha_nacimiento']);
         }
-
         return $personas;
     }
 
-    public static function contarBusqueda(string $termino): int
+    public static function contarConFiltro(string $documento, string $nombre, string $apellido, string $filtro): int
     {
         $pdo = Database::getConnection();
-        $like = '%' . $termino . '%';
+        [$where, $params] = self::armarWhere($filtro, $nombre, $apellido, $documento);
 
-        $stmt = $pdo->prepare(
-            "SELECT COUNT(*) FROM personas
-             WHERE CONCAT(nombres, ' ', apellidos) LIKE :like
-                OR nombres LIKE :like
-                OR apellidos LIKE :like
-                OR nro_documento LIKE :like"
-        );
-        $stmt->bindValue(':like', $like, PDO::PARAM_STR);
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM personas $where");
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
         $stmt->execute();
-
         return (int) $stmt->fetchColumn();
     }
 
-    
+    private static function armarWhere(string $filtro, string $nombre, string $apellido, string $documento): array
+    {
+        if ($filtro === 'todos') {
+            return ['', []];
+        }
 
+        if ($filtro === 'documento') {
+            return ['WHERE nro_documento LIKE :doc', [':doc' => '%' . $documento . '%']];
+        }
 
+        // filtro === 'nombre': combina nombre y/o apellido, cualquiera de los dos que venga
+        $condiciones = [];
+        $params = [];
+
+        if ($nombre !== '') {
+            $condiciones[] = 'MATCH(nombres) AGAINST(:nombre IN BOOLEAN MODE)';
+            $params[':nombre'] = $nombre . '*';
+        }
+        if ($apellido !== '') {
+            $condiciones[] = 'MATCH(apellidos) AGAINST(:apellido IN BOOLEAN MODE)';
+            $params[':apellido'] = $apellido . '*';
+        }
+
+        if (empty($condiciones)) {
+            return ['', []];
+        }
+
+        return ['WHERE ' . implode(' AND ', $condiciones), $params];
+    }
 }
