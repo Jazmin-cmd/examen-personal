@@ -146,25 +146,37 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
     $token = $_GET['captcha_token'] ?? '';
     $pagina = isset($_GET['pagina']) ? (int) $_GET['pagina'] : 1;
 
-    if (empty($token)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Falta la verificación captcha']);
-        exit;
-    }
-
     $ip = IpHelper::obtenerIpReal();
+    $sesionVerificada = ($_SESSION['captcha_verificado_hasta'] ?? 0) >= time();
 
-    if (!CaptchaHelper::validar($token, $ip)) {
-        http_response_code(403);
-        echo json_encode(['error' => 'Verificación captcha inválida']);
-        exit;
+    // Los tokens de Turnstile son de un solo uso: no se le puede volver a pedir a Cloudflare
+    // que valide el mismo token al paginar o repaginar la misma búsqueda. Si la sesión ya fue
+    // verificada recientemente (ver CAPTCHA_VIGENCIA_SEGUNDOS), no se exige un token nuevo.
+    if (!$sesionVerificada) {
+        if (empty($token)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Falta la verificación captcha']);
+            exit;
+        }
+
+        if (!CaptchaHelper::validar($token, $ip)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Verificación captcha inválida']);
+            exit;
+        }
     }
 
     $_SESSION['captcha_verificado_hasta'] = time() + CAPTCHA_VIGENCIA_SEGUNDOS;
 
-    if ($filtro !== 'todos' && mb_strlen($nombre) < 2 && mb_strlen($apellido) < 2 && mb_strlen($documento) < 2) {
+    if ($filtro === 'nombre' && mb_strlen($nombre) < 2 && mb_strlen($apellido) < 2) {
         http_response_code(400);
         echo json_encode(['error' => 'El término de búsqueda debe tener al menos 2 caracteres']);
+        exit;
+    }
+
+    if ($filtro === 'documento' && mb_strlen($documento) < 5) {
+        http_response_code(400);
+        echo json_encode(['error' => 'El documento debe tener al menos 5 caracteres']);
         exit;
     }
 

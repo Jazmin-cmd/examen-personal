@@ -37,6 +37,7 @@ header('Pragma: no-cache');
                 <button class="primario" onclick="prepararBusqueda()">Buscar</button>
             </div>
         </div>
+        <div id="errorFiltro" class="error-filtro" style="display:none;"></div>
     </div>
 </div>
 
@@ -212,6 +213,7 @@ function cambiarFiltro() {
     document.querySelectorAll('#terminoNombre, #terminoApellido, #terminoDocumento').forEach(input => {
         marcarCampoInvalido(input, false);
     });
+    mostrarErrorFiltro(null);
 }
 
 function obtenerErrorFiltro() {
@@ -225,7 +227,7 @@ function obtenerErrorFiltro() {
         if (!soloLetras.test(nombre) || !soloLetras.test(apellido)) return 'Nombre y apellido sólo pueden contener letras';
     } else if (filtro === 'documento') {
         const documento = document.getElementById('terminoDocumento').value.trim();
-        if (documento.length < 2) return 'Escribí al menos 2 caracteres';
+        if (documento.length < 5) return 'El documento debe tener al menos 5 caracteres';
         if (!/^\d+$/.test(documento)) return 'El documento sólo puede contener números';
     }
 
@@ -234,6 +236,12 @@ function obtenerErrorFiltro() {
 
 function marcarCampoInvalido(input, invalido) {
     input.classList.toggle('campo-invalido', invalido);
+}
+
+function mostrarErrorFiltro(mensaje) {
+    const contenedor = document.getElementById('errorFiltro');
+    contenedor.textContent = mensaje || '';
+    contenedor.style.display = mensaje ? 'block' : 'none';
 }
 
 function validarCamposFiltroActual(mostrarError) {
@@ -247,8 +255,8 @@ function validarCamposFiltroActual(mostrarError) {
         marcarCampoInvalido(document.getElementById('terminoDocumento'), !!error);
     }
 
-    if (error && mostrarError) {
-        Swal.fire({ icon: 'warning', title: error });
+    if (mostrarError) {
+        mostrarErrorFiltro(error);
     }
 
     return error;
@@ -259,7 +267,10 @@ document.getElementById('terminoApellido').addEventListener('blur', () => valida
 document.getElementById('terminoDocumento').addEventListener('blur', () => validarCamposFiltroActual(true));
 
 document.querySelectorAll('#terminoNombre, #terminoApellido, #terminoDocumento').forEach(input => {
-    input.addEventListener('input', () => marcarCampoInvalido(input, false));
+    input.addEventListener('input', () => {
+        marcarCampoInvalido(input, false);
+        mostrarErrorFiltro(null);
+    });
 });
 
 document.querySelectorAll('#terminoDocumento, input[name="nro_documento"]').forEach(input => {
@@ -388,7 +399,7 @@ function renderTabla(personas) {
 }
 
 function cambiarPagina(delta) {
-    ejecutarBusqueda(paginaActual + delta);
+    refrescarTabla(paginaActual + delta);
 }
 
 function verDocumento(frente, dorso) {
