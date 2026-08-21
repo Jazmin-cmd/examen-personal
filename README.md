@@ -107,16 +107,20 @@ y no tiene solución completa sin servicios externos de detección de VPN/proxy.
   **La validación ocurre siempre en el servidor**; el frontend nunca decide por sí solo que el
   captcha es válido.
 - **Por qué no se puede eludir pegándole directo al endpoint**: `GET /buscar` exige
-  `captcha_token` y lo valida contra Cloudflare en cada llamada; sin un token real (emitido por el
-  widget para ese sitio) la verificación falla y responde `403`. Un cliente HTTP sin navegador no
-  puede resolver el challenge de Turnstile, así que no puede generar un token válido.
-- **No reutilizable indefinidamente**: los tokens de Turnstile son de un solo uso por diseño de
-  Cloudflare (`siteverify` los invalida al primer uso). Además, tras una búsqueda válida el backend
-  marca la sesión como verificada por 15 minutos (`$_SESSION['captcha_verificado_hasta']`), usados
-  únicamente para permitir que la tabla se refresque sola después de un alta/edición/baja
-  (`GET /personas-refrescar`) sin repetir el widget en cada acción — pero ese endpoint exige esa
-  marca de sesión vigente, así que tampoco es un endpoint de búsqueda libre: sin haber pasado antes
-  por un captcha válido en `/buscar`, responde `403` y no expone datos.
+  `captcha_token` (o una sesión ya verificada, ver debajo) y valida el token contra Cloudflare;
+  sin un token real (emitido por el widget para ese sitio) ni una sesión verificada, la verificación
+  falla y responde `400`/`403`. Un cliente HTTP sin navegador no puede resolver el challenge de
+  Turnstile, así que no puede generar un token válido por su cuenta.
+- **No reutilizable indefinidamente, pero tampoco de un solo golpe**: los tokens de Turnstile son de
+  un solo uso por diseño de Cloudflare (`siteverify` los invalida al primer uso) — por eso **no se
+  puede volver a validar el mismo token** al paginar o repetir la misma búsqueda. En lugar de eso,
+  tras la primera validación exitosa el backend marca la sesión como verificada por 15 minutos
+  (`$_SESSION['captcha_verificado_hasta']`); mientras esa marca esté vigente, `GET /buscar` no vuelve
+  a exigir/validar un token contra Cloudflare (evita el error de "token ya usado" al cambiar de
+  página) y `GET /personas-refrescar` puede refrescar la tabla tras un alta/edición/baja sin repetir
+  el widget. Ninguno de los dos es un endpoint de búsqueda libre: sin haber pasado antes por un
+  captcha válido en `/buscar` (y con la sesión vigente), ambos responden `400`/`403` y no exponen
+  datos.
 - Las claves (`TURNSTILE_SECRET_KEY`) viven en `.env`, fuera del código y del repositorio.
 
 ## 6. Auditoría de búsquedas
@@ -125,6 +129,15 @@ Cada llamada exitosa a `GET /buscar` inserta una fila en `busquedas_auditoria`
 ([`src/Auditoria.php`](src/Auditoria.php)) con: fecha/hora (`created_at`), término buscado,
 cantidad de resultados, IP de origen, país/ciudad/proveedor/coordenadas obtenidos de la
 geolocalización, y si la notificación a Telegram se envió con éxito.
+
+**Qué cuenta como "una búsqueda":** solo la ejecución inicial de una búsqueda (click en "Buscar",
+con captcha resuelto) genera fila de auditoría, consulta de geolocalización y notificación a
+Telegram. Cambiar de página dentro de esos mismos resultados (`cambiarPagina()` en `app.php`) llama
+a `GET /personas-refrescar` en lugar de `GET /buscar`: sigue consultando la base de datos con
+`LIMIT`/`OFFSET` en cada página (necesario para no traer 500+ filas de una sola vez), pero no
+registra auditoría ni notifica Telegram. Tratar cada cambio de página como una "búsqueda" nueva
+generaría una fila de auditoría y un mensaje de Telegram redundantes (mismo término, mismo total de
+resultados) por cada click, sin aportar información nueva.
 
 Falta hoy una vista en el frontend que liste ese historial: el endpoint `GET /auditoria` existe y
 pagina correctamente, pero no está conectado a ninguna pantalla de `app.php` — **queda como pendiente
