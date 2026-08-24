@@ -324,6 +324,12 @@ async function ejecutarBusqueda(pagina) {
     }
 
     cerrarModal('modalCaptcha');
+    // El widget de Turnstile se auto-refresca al expirar el token (5 min) y vuelve a
+    // disparar el callback, generando búsquedas automáticas. Se destruye tras usarlo.
+    if (turnstileWidgetId !== null) {
+        turnstile.remove(turnstileWidgetId);
+        turnstileWidgetId = null;
+    }
     abrirModal('modalCargando');
 
     const res = await fetch(`${API}/buscar?${params.toString()}`);

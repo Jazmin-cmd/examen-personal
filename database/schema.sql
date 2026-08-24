@@ -9,7 +9,9 @@ CREATE TABLE personas (
     fecha_nacimiento DATE NOT NULL,
     foto_frente VARCHAR(255) NOT NULL,
     foto_dorso VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FULLTEXT idx_busqueda_nombre (nombres),
+    FULLTEXT idx_busqueda_apellido (apellidos)
 );
 
 CREATE TABLE busquedas_auditoria (
