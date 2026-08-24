@@ -50,9 +50,25 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
         exit;
     }
 
-    if (strtotime($_POST['fecha_nacimiento']) > time()) {
+        $fechaNacimiento = strtotime($_POST['fecha_nacimiento']);
+
+    if ($fechaNacimiento === false) {
+        http_response_code(400);
+        echo json_encode(['error' => 'La fecha de nacimiento no es válida']);
+        exit;
+    }
+
+    if ($fechaNacimiento > time()) {
         http_response_code(400);
         echo json_encode(['error' => 'La fecha de nacimiento no puede ser futura']);
+        exit;
+    }
+
+    // Una fecha anterior a 1900 no corresponde a una persona viva: se descarta
+    // para evitar datos incoherentes en la base.
+    if ($fechaNacimiento < strtotime('1900-01-01')) {
+        http_response_code(400);
+        echo json_encode(['error' => 'La fecha de nacimiento no puede ser anterior a 1900']);
         exit;
     }
 
@@ -128,13 +144,62 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
 
 
 } elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'PUT') {
+    $id = (int) $segmentos[1];
     $input = json_decode(file_get_contents('php://input'), true);
-    $actualizado = Persona::actualizar((int) $segmentos[1], $input);
-    echo json_encode(['actualizado' => $actualizado]);
 
-// DELETE /personas/5
+    if (!is_array($input)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Cuerpo de la petición inválido']);
+        exit;
+    }
+
+    if (!Persona::buscarPorId($id)) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Persona no encontrada']);
+        exit;
+    }
+
+    if (empty($input['nombres']) || empty($input['apellidos']) || empty($input['fecha_nacimiento'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Faltan campos obligatorios']);
+        exit;
+    }
+
+    if (!preg_match('/^[\p{L}\s]+$/u', $input['nombres']) || !preg_match('/^[\p{L}\s]+$/u', $input['apellidos'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Nombres y apellidos sólo pueden contener letras']);
+        exit;
+    }
+
+    $fecha = strtotime($input['fecha_nacimiento']);
+    if ($fecha === false || $fecha > time() || $fecha < strtotime('1900-01-01')) {
+        http_response_code(400);
+        echo json_encode(['error' => 'La fecha de nacimiento no es válida']);
+        exit;
+    }
+
+    try {
+        $actualizado = Persona::actualizar($id, [
+            'nombres' => $input['nombres'],
+            'apellidos' => $input['apellidos'],
+            'fecha_nacimiento' => $input['fecha_nacimiento'],
+        ]);
+        echo json_encode(['actualizado' => $actualizado]);
+    } catch (\PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'No se pudo actualizar la persona']);
+    }// DELETE /personas/5
+
 } elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'DELETE') {
-    $eliminado = Persona::eliminar((int) $segmentos[1]);
+    $id = (int) $segmentos[1];
+
+    if (!Persona::buscarPorId($id)) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Persona no encontrada']);
+        exit;
+    }
+
+    $eliminado = Persona::eliminar($id);
     echo json_encode(['eliminado' => $eliminado]);
 
 } elseif ($uri === '/buscar' && $metodo === 'GET') {
@@ -202,8 +267,16 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
     );
     $telegramOk = TelegramHelper::notificar($mensajeTelegram);
 
+    if ($filtro === 'documento') {
+        $terminoAuditado = $documento;
+    } elseif($filtro === 'nombre') {
+        $terminoAuditado = trim($nombre . ' ' . $apellido);
+    } else {
+        $terminoAuditado = '(listado completo)';
+    }
+
     Auditoria::registrar([
-        'termino' => $documento ?: '(listado completo)',
+        'termino' => $terminoAuditado,
         'cantidad_resultados' => $totalResultados,
         'ip_origen' => $ip,
         'geo_pais' => $geo['pais'] ?? null,
@@ -235,10 +308,15 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
     readfile($archivo);
 
 } elseif ($uri === '/auditoria' && $metodo === 'GET') {
+    //verificar captcha antes de permitir ver la auditoría.
+    if (($_SESSION['captcha_verificado_hasta'] ?? 0) < time()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Verificación captcha requerida o expirada']);
+        exit;
+    }
+
     $pagina = isset($_GET['pagina']) ? (int) $_GET['pagina'] : 1;
     echo json_encode(['data' => Auditoria::listar($pagina)]);
-
-
 } elseif ($uri === '/personas-refrescar' && $metodo === 'GET') {
     if (($_SESSION['captcha_verificado_hasta'] ?? 0) < time()) {
         http_response_code(403);
