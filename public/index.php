@@ -10,6 +10,7 @@ use App\IpHelper;
 use App\GeoHelper;
 use App\TelegramHelper;
 use App\ImagenHelper;
+use App\CaptchaPropio;
 
 
 $dotenv = Dotenv::createImmutable(__DIR__ . '/..');
@@ -84,6 +85,12 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
         exit;
     }
 
+    if (mb_strlen($_POST['nro_documento']) < 5) {
+        http_response_code(400);
+        echo json_encode(['error' => 'El documento debe tener al menos 5 caracteres']);
+        exit;
+    }
+
     if (empty($_FILES['foto_frente']) || empty($_FILES['foto_dorso'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Debe subir ambas imágenes de la cédula']);
@@ -115,9 +122,29 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
 } elseif ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'POST' && ($_POST['_method'] ?? '') === 'PUT') {
     $id = (int) $segmentos[1];
 
+    if (empty($_POST['nombres']) || empty($_POST['apellidos']) || empty($_POST['fecha_nacimiento'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Faltan campos obligatorios']);
+        exit;
+    }
+
     if (!preg_match('/^[\p{L}\s]+$/u', $_POST['nombres']) || !preg_match('/^[\p{L}\s]+$/u', $_POST['apellidos'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Nombres y apellidos sólo pueden contener letras']);
+        exit;
+    }
+        
+
+    if (!Persona::buscarPorId($id)) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Persona no encontrada']);
+        exit;
+    }
+
+    $fechaEditada = strtotime($_POST['fecha_nacimiento']);
+    if ($fechaEditada === false || $fechaEditada > time() || $fechaEditada < strtotime('1900-01-01')) {
+        http_response_code(400);
+        echo json_encode(['error' => 'La fecha de nacimiento no es válida']);
         exit;
     }
 
@@ -214,9 +241,6 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
     $ip = IpHelper::obtenerIpReal();
     $sesionVerificada = ($_SESSION['captcha_verificado_hasta'] ?? 0) >= time();
 
-    // Los tokens de Turnstile son de un solo uso: no se le puede volver a pedir a Cloudflare
-    // que valide el mismo token al paginar o repaginar la misma búsqueda. Si la sesión ya fue
-    // verificada recientemente (ver CAPTCHA_VIGENCIA_SEGUNDOS), no se exige un token nuevo.
     if (!$sesionVerificada) {
         if (empty($token)) {
             http_response_code(400);
@@ -335,6 +359,27 @@ if ($segmentos[0] === 'personas' && isset($segmentos[1]) && $metodo === 'GET') {
 
     echo json_encode(['data' => $resultados, 'total' => $totalResultados, 'pagina' => $pagina]);
 
+} elseif ($uri === '/captcha/generar' && $metodo === 'GET') {
+    echo json_encode(CaptchaPropio::generar());
+
+} elseif ($uri === '/captcha/validar' && $metodo === 'POST') {
+    $input = json_decode(file_get_contents('php://input'), true);
+
+    if (!is_array($input) || empty($input['desafio_id']) || !isset($input['x'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Datos de verificación incompletos']);
+        exit;
+    }
+
+    if (!CaptchaPropio::validar($input['desafio_id'], (int) $input['x'], $input['traza'] ?? [])) {
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'error' => 'Verificación incorrecta']);
+        exit;
+    }
+
+    $_SESSION['captcha_verificado_hasta'] = time() + CAPTCHA_VIGENCIA_SEGUNDOS;
+
+    echo json_encode(['ok' => true]);
 
 } else {
     http_response_code(404);
