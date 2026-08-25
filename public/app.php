@@ -345,15 +345,13 @@ async function soltarArrastre() {
     if (!arrastrando) return;
     arrastrando = false;
     pieza.style.cursor = 'grab';
-    body: JSON.stringify({ desafio_id: desafioId, x: x, traza: traza })
 
     const mensaje = document.getElementById('captchaMensaje');
     const x = parseInt(pieza.style.left);
-    console.log('x enviada:', x);
     const res = await fetch(`${API}/captcha/validar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ desafio_id: desafioId, x: x })
+        body: JSON.stringify({ desafio_id: desafioId, x: x, traza: traza })
     });
 
     if (res.ok) {

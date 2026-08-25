@@ -74,7 +74,7 @@ class CaptchaPropio
             unset($_SESSION['captcha_desafios'][$id]);
         }
 
-        return $acerto;;
+        return $acerto;
     }
 
     private static function pareceHumano(array $traza): bool
