@@ -9,7 +9,7 @@ header('Pragma: no-cache');
 <title>CRUD Personas</title>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <link rel="stylesheet" href="style.css?v=1">
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+<!-- <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>-->
 </head>
 <body>
 
@@ -63,10 +63,22 @@ header('Pragma: no-cache');
     <div class="modal-box">
         <div class="modal-header">
             <h3>Verificación</h3>
-            <!-- <button class="cerrar-modal" onclick="cerrarModal('modalCaptcha')">✕</button>-->
         </div>
-        <p style="font-size:14px; color:#64748b;">Confirmá que sos humano para continuar.</p>
-        <div id="turnstileContainer"></div>
+        <p style="font-size:14px; color:#64748b;">
+            Arrastrá la pieza hasta completar la imagen.
+        </p>
+
+        <div id="rompecabezas" style="position:relative; width:300px; height:150px;
+             margin:0 auto; border-radius:8px; overflow:hidden; user-select:none;">
+            <img id="captchaFondo" style="position:absolute; top:0; left:0; width:300px; height:150px;">
+            <img id="captchaPieza" style="position:absolute; top:0; left:0; width:50px; height:50px;
+                 box-shadow:0 2px 8px rgba(0,0,0,.4);">
+        </div>
+
+        <p id="captchaMensaje" style="text-align:center; font-size:13px; min-height:18px; margin:8px 0 0;"></p>
+        <button class="secundario" onclick="cargarCaptcha()" style="width:100%; margin-top:8px;">
+            Generar otra imagen
+        </button>
     </div>
 </div>
 
@@ -176,8 +188,8 @@ const API = window.location.origin;
 let paginaActual = 1;
 let totalPersonas = 0;
 const PORPAGINA = 20;
-let captchaToken = null;
-let turnstileWidgetId = null;
+/*let captchaToken = null;
+let turnstileWidgetId = null;*/
 
 function abrirModal(id) { document.getElementById(id).classList.add('abierto'); }
 function cerrarModal(id) { document.getElementById(id).classList.remove('abierto'); }
@@ -285,25 +297,90 @@ document.querySelectorAll('#terminoNombre, #terminoApellido, input[name="nombres
     });
 });
 
-function prepararBusqueda() {
-    if (validarCamposFiltroActual(true)) return;
 
-    captchaToken = null;
-    abrirModal('modalCaptcha');
+let desafioId = null;
+let arrastrando = false;
+let offsetInicial = 0;
+let maxX = 250;
+let traza = [];
+let inicioArrastre = 0;
 
-    if (turnstileWidgetId !== null) {
-        turnstile.remove(turnstileWidgetId);
-    }
+async function cargarCaptcha() {
+    const res = await fetch(`${API}/captcha/generar`);
+    const d = await res.json();
 
-    turnstileWidgetId = turnstile.render('#turnstileContainer', {
-        sitekey: '0x4AAAAAAEWBvb_HlVrAwpgW',
-        callback: onCaptchaResuelto
-    });
+    desafioId = d.desafio_id;
+    maxX = d.ancho - d.lado_pieza;
+
+    document.getElementById('captchaFondo').src = d.fondo;
+    const pieza = document.getElementById('captchaPieza');
+    pieza.src = d.pieza;
+    pieza.style.top = d.pieza_y + 'px';
+    pieza.style.left = '0px';
+    pieza.style.cursor = 'grab';
+
+    document.getElementById('captchaMensaje').textContent = '';
 }
 
-function onCaptchaResuelto(token) {
-    captchaToken = token;
-    ejecutarBusqueda(1);
+const pieza = document.getElementById('captchaPieza');
+const zona = document.getElementById('rompecabezas');
+
+function iniciarArrastre(clienteX) {
+    traza = [];
+    inicioArrastre = Date.now();
+    arrastrando = true;
+    offsetInicial = clienteX - parseInt(pieza.style.left || 0);
+    pieza.style.cursor = 'grabbing';
+}
+
+function moverArrastre(clienteX) {
+    if (!arrastrando) return;
+    let x = clienteX - offsetInicial;
+    x = Math.max(0, Math.min(maxX, x));
+    pieza.style.left = x + 'px';
+    traza.push({ x: x, t: Date.now() - inicioArrastre });
+}
+
+async function soltarArrastre() {
+    if (!arrastrando) return;
+    arrastrando = false;
+    pieza.style.cursor = 'grab';
+    body: JSON.stringify({ desafio_id: desafioId, x: x, traza: traza })
+
+    const mensaje = document.getElementById('captchaMensaje');
+    const x = parseInt(pieza.style.left);
+    console.log('x enviada:', x);
+    const res = await fetch(`${API}/captcha/validar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ desafio_id: desafioId, x: x })
+    });
+
+    if (res.ok) {
+        mensaje.style.color = '#16a34a';
+        mensaje.textContent = 'Verificado';
+        setTimeout(() => ejecutarBusqueda(1), 400);
+    } else {
+        mensaje.style.color = '#dc2626';
+        mensaje.textContent = 'No encajó, probá de nuevo';
+        cargarCaptcha();
+    }
+}
+
+// Mouse
+pieza.addEventListener('mousedown', (e) => { e.preventDefault(); iniciarArrastre(e.clientX); });
+document.addEventListener('mousemove', (e) => moverArrastre(e.clientX));
+document.addEventListener('mouseup', soltarArrastre);
+
+// Táctil, para que funcione también en celular
+pieza.addEventListener('touchstart', (e) => { e.preventDefault(); iniciarArrastre(e.touches[0].clientX); });
+document.addEventListener('touchmove', (e) => { if (arrastrando) moverArrastre(e.touches[0].clientX); });
+document.addEventListener('touchend', soltarArrastre);
+
+function prepararBusqueda() {
+    if (validarCamposFiltroActual(true)) return;
+    abrirModal('modalCaptcha');
+    cargarCaptcha();
 }
 
 async function ejecutarBusqueda(pagina) {
@@ -314,7 +391,7 @@ async function ejecutarBusqueda(pagina) {
         return;
     }
 
-    let params = new URLSearchParams({ filtro, pagina, captcha_token: captchaToken });
+    let params = new URLSearchParams({ filtro, pagina });
 
     if (filtro === 'nombre') {
         params.append('nombre', document.getElementById('terminoNombre').value.trim());
@@ -324,12 +401,6 @@ async function ejecutarBusqueda(pagina) {
     }
 
     cerrarModal('modalCaptcha');
-    // El widget de Turnstile se auto-refresca al expirar el token (5 min) y vuelve a
-    // disparar el callback, generando búsquedas automáticas. Se destruye tras usarlo.
-    if (turnstileWidgetId !== null) {
-        turnstile.remove(turnstileWidgetId);
-        turnstileWidgetId = null;
-    }
     abrirModal('modalCargando');
 
     const res = await fetch(`${API}/buscar?${params.toString()}`);
